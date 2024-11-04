@@ -1,54 +1,19 @@
+from pathlib import Path
 import re
 import time
 from PyPDF2 import PdfWriter
 from os import path
 import os as os
 
-base_folder = "/Users/anirudhchawla/Library/CloudStorage/GoogleDrive-anirudhchawla@ming-group.de"
-targetFolderFinal = f"{base_folder}/Shared drives/Ming Group/0_EmployeePaySlips"
+cloud_storage_folder = Path(os.path.expanduser("~")) / "Library" / "CloudStorage"
 
-"""def find_name_amount_for_lohn(name, target_word,company,salary_data,currentmonth,extracted_lines,target_folder,suffix,input_pdf):
-    # Remove spaces from the provided name incrementally to match the spacing removal logic
-    name_variations = name.replace(" ","")
-    lines = extracted_lines
-    print(extracted_lines)
-    page_start_index = 0
-    for i, line in enumerate(lines):
-        if "Page" in line:
-            # Extract the page number from the line
-            page_number = int(line.split("-")[1])  # Assuming the format is "Page X"
-            page_start_index = i
-        # Check against each variation of the name until one matches
-        print(page_number)
-        if name_variations == line.replace(" ", ""):
-            print("name_variations")
-            print(name_variations)
-            print(line.replace(" ", ""))
-            next_page_index = len(lines)
-            for k in range(i + 1, len(lines)):
-                if "Page" in lines[k]:
-                    next_page_index = k  # The next page starts here
-                    break
-            #split_pdf(input_pdf,page_number, target_folder, company, name, suffix)
-            # Once the name is found, search for the target word without further removing spaces
-            for j in range(i + 1, next_page_index):
-                if target_word in lines[j]:
-                    # Check the line below the target word
-                    if j + 1 < len(lines):
-                        line_below = lines[j + 1]
-                        words = line_below.split()
-                        print("words")
-                        print(words)
-                        if words:
-                            salary_data.append({"Employee": name, "NetSalary": words[-1], 
-                            "Verwendungszweck": f"{company} {currentmonth} Lohn/Gehalt" })
-                            #return words[-1]  # Return the rightmost word
-                        else:
-                            print("No words found in the line below.")
-                            #return "No words found in the line below."
-            print("target word not found")
-            #return "Target word not found after the name."
-    return "Name not found in the document."""
+# Find the Google Drive folder that matches the "GoogleDrive-<email>@ming-group.de" pattern
+base_folder = None
+for folder in cloud_storage_folder.iterdir():
+    if folder.is_dir() and folder.name.startswith("GoogleDrive-") and folder.name.endswith("@ming-group.de"):
+        base_folder = folder
+        break
+targetFolderFinal = f"{base_folder}/Shared drives/Ming Group/0_EmployeePaySlips"
 
 def find_name_amount_for_lohn(employeedetails, extracted_lines_for_amount, target_word, company, salary_data, currentmonth):
     lines = extracted_lines_for_amount
@@ -76,7 +41,6 @@ def find_name_amount_for_lohn(employeedetails, extracted_lines_for_amount, targe
                     if "Page" in lines[k]:
                         next_page_index = k  # The next page starts here
                         break
-                
                 # Initialize variables to hold net and gross salary
                 net_salary = None
                 gross_salary = None
@@ -92,7 +56,7 @@ def find_name_amount_for_lohn(employeedetails, extracted_lines_for_amount, targe
                             words = line_below.split()
                             print(f"Words found after target word: {words}")
                             if words:
-                                net_salary = words[-1].rstrip("-")  # Remove trailing '-' if present
+                                net_salary = words[-1] # Remove trailing '-' if present
                                 if target_word_count == 1:
                                     # First occurrence: prepare to add salary data
                                     print(f"Net salary found for {name} on first occurrence: {net_salary}")
@@ -110,7 +74,7 @@ def find_name_amount_for_lohn(employeedetails, extracted_lines_for_amount, targe
                             words = line_below.split()
                             print(f"Words found after 'Gesamt-Brutto': {words}")
                             if words:
-                                gross_salary = words[-1].rstrip("-")  # Remove trailing '-' if present
+                                gross_salary = words[-1]  # Remove trailing '-' if present
                                 print(f"Gross salary found for {name}: {gross_salary}")
                                 
 
@@ -129,100 +93,6 @@ def find_name_amount_for_lohn(employeedetails, extracted_lines_for_amount, targe
                     print(f"Salary data added for {name}: {salary_entry}")
 
     return "Processing complete."
-
-"""def find_name_amount_for_lohn(employeedetails, extracted_lines_for_amount, target_word, company, salary_data, currentmonth):
-    lines = extracted_lines_for_amount
-    name = employeedetails['Employee']
-    page_number_to_process = employeedetails['Page']
-    
-    # Regex to match lines that contain only numbers
-    number_pattern = re.compile(r'\d')
-
-    for i, line in enumerate(lines):
-        if "Page" in line:
-            # Extract the page number from the line
-            page_number = int(line.split("-")[1])  # Assuming the format is "Page X"
-            
-            # Process only the page corresponding to the employee's page number
-            if page_number == page_number_to_process:
-                print(f"Processing Page-{page_number} for Employee: {name}")
-                
-                # Now look for the target word (e.g., salary-related info)
-                next_page_index = len(lines)  # Default to the end of the document if no more pages
-                target_word_count = 0  # Counter to track the number of times target word is found
-
-                for k in range(i + 1, len(lines)):
-                    if "Page" in lines[k]:
-                        next_page_index = k  # The next page starts here
-                        break
-                
-                # Search for the target word within this page's lines
-                for l in range(i + 1, next_page_index):
-                    if target_word in lines[l]:
-                        target_word_count += 1  # Increment the counter when the target word is found
-                        
-                        # Check the line below the target word
-                        if l + 1 < len(lines):
-                            line_below = lines[l + 1]
-                            words = line_below.split()
-                            print(f"Words found after target word: {words}")
-                            if words:
-                                net_salary = words[-1].rstrip("-")  # Remove trailing '-' if present
-                                if target_word_count == 1:
-                                    # First occurrence: add salary data
-                                    salary_data.append({
-                                        "Employee": name,
-                                        "NetSalary": net_salary,
-                                        "Verwendungszweck": f"{company} {currentmonth} Lohn/Gehalt"
-                                    })
-                                    print(f"Salary data added for {name} on first occurrence")
-                                elif target_word_count == 2:
-                                    # Second occurrence: remove first and replace with second
-                                    if salary_data:
-                                        salary_data.pop()  # Remove the previously added entry
-                                        print(f"Removed salary data for {name} on first occurrence")
-                                    salary_data.append({
-                                        "Employee": name,
-                                        "NetSalary": net_salary,
-                                        "Verwendungszweck": f"{company} {currentmonth} Lohn/Gehalt"
-                                    })
-                                    print(f"Salary data added for {name} on second occurrence")
-                                    break  # Stop further processing after appending for the second occurrence
-
-    return "Processing complete."""
-
-"""def find_name_amount_for_meldung(name, target_word,company,salary_data,currentmonth,extracted_lines,target_folder,suffix,input_pdf):
-    # Remove spaces from the provided name to match the spacing removal logic
-    name_variations = name.replace(" ", "")
-    
-    found_name = False  # Track if the name has been found
-    print(extracted_lines)
-    for line in extracted_lines:
-        if "Page" in line:
-            # Extract the page number from the line
-            page_number = int(line.split("-")[1])
-        # Check against each variation of the name until one matches
-        if name_variations == line.replace(" ", ""):
-            print(f"Found name: {line}")  # Print the found name line
-            found_name = True  # Set the flag to True after finding the name
-            #split_pdf(input_pdf,page_number, target_folder, company, name, suffix)
-            continue  # Move to the next line after finding the name
-
-        # If the name has been found, check for the target word in the following lines
-        if found_name and target_word in line:
-            # Check if "Euro" is in the same line
-            if "Euro" in line:
-                answer = line.split(" ")[1]
-                if answer != "Euro":
-                    salary_data.append({"Employee": name, "NetSalary": answer, 
-                                "Verwendungszweck": f"{company} {currentmonth} Lohn/Gehalt" })
-                    return
-                else:
-                    return None
-            
-            return "Euro not found in the line containing Bruttoarbeitsentgelt."
-    
-    return "Target word not found after the name."""
 
 def find_name_amount_for_meldung(employeedetails, extracted_lines, target_word, company, salary_data, currentmonth):
     lines = extracted_lines
@@ -317,7 +187,6 @@ def split_pdf(currentmonth,input_pdf, page_number,target_folder, company, employ
     print("filename")
     print(filename)
     print(file_path)
-    return
     # Check if the PDF file already exists
     if path.exists(file_path):
         print(f"{file_path} already exists. Skipping write operation.")

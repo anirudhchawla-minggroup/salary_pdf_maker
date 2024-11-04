@@ -1,21 +1,29 @@
 from collections import defaultdict
 from datetime import datetime
+from pathlib import Path
 import time
 from PyPDF2 import PdfReader
-from os import path
 from glob import glob
-from openpyxl import load_workbook
 import pandas as pd
 import os
 import pdfplumber
-from ocr import find_name_amount_for_lohn, find_name_amount_for_lohnsteuer, find_name_amount_for_meldung, split_pdf
+from collections import defaultdict
+import re
+from ocr import find_name_amount_for_lohn, find_name_amount_for_meldung, split_pdf
 
 # CONFIG
 #listOfEmployees = fetch_employees_data()
 currentmonth = datetime.now().strftime("%m%y")
+cloud_storage_folder = Path(os.path.expanduser("~")) / "Library" / "CloudStorage"
 
-base_folder = "/Users/anirudhchawla/Library/CloudStorage/GoogleDrive-anirudhchawla@ming-group.de"
-
+# Find the Google Drive folder that matches the "GoogleDrive-<email>@ming-group.de" pattern
+base_folder = None
+for folder in cloud_storage_folder.iterdir():
+    if folder.is_dir() and folder.name.startswith("GoogleDrive-") and folder.name.endswith("@ming-group.de"):
+        base_folder = folder
+        break
+print("base_folder")
+print(base_folder)
 targetFolderFinal = f"{base_folder}/Shared drives/Ming Group/0_EmployeePaySlips"
 
 # Function to find PDF files containing "Lohn" in their filenames
@@ -34,9 +42,10 @@ def find_lohn_pdfs(folder_path):
 company_info = {
     ##0924
     #"WIVH_GmbxH_WIVH": f"{base_folder}/Shared drives/Ming Group/1_WIVH_Wolfstreet Investment Holding GmbH/2_Accounting_WIVH/5_Salaries/" + currentmonth +"_WIVH",   
+    #"WSMGmbH_WSM": f"{base_folder}/Shared drives/Ming Group/2_12_WSM_Wolfstreet Management/2_Accounting_WSM/5_Salaries/" + currentmonth +"_WSM",   
     #"Gastro_NF": f"{base_folder}/My Drive/2_1_0_NF_Ming_EK_NF_Gastroberatung/2_Accounting_NF/5_Salaries/"+ currentmonth + "_NF",
     "MICGMBH_MIC": f"{base_folder}/Shared drives/Ming Group/2_13_MIC_Ming Investment Consulting/2_Accounting_MIC/5_Salaries/"+ currentmonth + "_MIC",
-    #"WSMGmbH_WSM": f"{base_folder}/Shared drives/Ming Group/2_12_WSM_Wolfstreet Management/2_Accounting_WSM/5_Salaries/"+ currentmonth +"_WSM",
+    #"BBMingIIGmbH_RC": f"{base_folder}/Shared drives/Ming Group/2_10_RC_BB Ming II GmbH/2_Accounting_BBMII/5_Salaries/"+ currentmonth +"_RC",
     #"MingGastroGmbH_MT": f"{base_folder}/Shared drives/Ming Group/2_4_MT_MingGastroGmbH_Bikini/2_Accounting_MT/5_Salaries/" + currentmonth +"_MT",    
     #"ChenWangHandelsGmbH_FE": f"{base_folder}/Shared drives/Ming Group/2_3_FE_Feast/2_Accounting_FE/5_Salaries_FE/" + currentmonth +"_FE",
     #"MingDynastieGmbH_M2": f"{base_folder}/Shared drives/Ming Group/2_1_2_M2_Ming Dynastie GmbH Europa Center/2_Accounting_M2/5_Salaries/" + currentmonth + "_M2" ,
@@ -44,14 +53,10 @@ company_info = {
     #"KTVBarWolfgangFu_KTV": f"{base_folder}/Shared drives/Ming Group/2_5_KTV_EK_WOLF/2_Accounting_KTV/5_Salaries/" + currentmonth +"_KTV",
     #"HanFactoryGmbH_HF": f"{base_folder}/Shared drives/Ming Group/2_8_HF_Han Factory GmbH/2_Accounting_HF/5_Salaries_HF/"+ currentmonth +"_HF",
     #"BBMIGmbH_SSC": f"{base_folder}/Shared drives/Ming Group/2_9_1_SSC_BB Ming I GmbH SSC/2_Accounting_BBMI/5_Salaries/" + currentmonth +"_SSC",
-    #"BBMIGmbH_AR": f"{base_folder}/Shared drives/Ming Group/2_9_2_AR_BB Ming I GmbH AROMA/2_Accounting_AR/5_Salaries/" + currentmonth +"_AR",
-    #"MingJannoGmbH_M1": f"{base_folder}/Shared drives/Ming Group/2_1_1_M1_MingDynastieJannowitzbrueckeGmbH/2_Accounting_M1/5_Salaries/"+ currentmonth +"_M1",
+    #"BBMIGmbH_AR": f"{base_folder}/Shared drives/Ming Group/2_9_2_AR_BB Ming I GmbH AROMA/2_Accounting_AR/5_Salaries_AR/" + currentmonth +"_AR",
+    #"MingJannoGmbH_M1": f"{base_folder}/Shared drives/Ming Group/2_1_1_M1_MingDynastieJannowitzbrueckeGmbH/2_Accounting_M1/5_Salaries_M1/"+ currentmonth +"_M1",
     #"HANBBQ_WolfgangFu_H1": f"{base_folder}/Shared drives/Ming Group/2_6_H1_HANBBQ_EK/2_Accounting_H1/5_Salaries/" + currentmonth +"_H1"
 }
-
-import pdfplumber
-from collections import defaultdict
-import re
 
 def extract_left_right_text(selected_pdf,suffix,target_folder,company):
     extracted_lines = []
@@ -124,67 +129,69 @@ def extract_left_right_text(selected_pdf,suffix,target_folder,company):
     return extracted_lines, employee_list
 
 # Iterate over the company info and process each company
-for company, folder_path in company_info.items():
-    pdf_files = find_lohn_pdfs(folder_path)
-    if pdf_files:
-        target_folder = folder_path
-        for selected_pdf in pdf_files:
-            salary_data = []
-            print(selected_pdf)
-            # Extract text from the PDF once
-            if "lohnab" in selected_pdf.lower() or "meldung" in selected_pdf.lower():
-                with pdfplumber.open(selected_pdf) as pdf:
-                    extracted_lines_for_amount = []
-                    for page_number, page in enumerate(pdf.pages, start=1):  # Start page numbering at 1
-                        text = page.extract_text()
-                        if text:
-                            lines = text.split('\n')
-                            extracted_lines_for_amount.append(f"Page-{page_number}")
-                            for line in lines:
-                                extracted_lines_for_amount.append(line)  # Then append the line text
-            start_time = time.time()
-            if "lohnab" in selected_pdf.lower():
-                suffix = "Lohnabrechnung"
-                extracted_lines,employee_list = extract_left_right_text(selected_pdf,suffix,target_folder,company)
-                for employee in employee_list:
-                    target_word = 'Auszahlungsbetrag'  # Replace with the word you're looking for
-                    find_name_amount_for_lohn(employee,extracted_lines_for_amount,target_word,company,salary_data,currentmonth)
-                salary_dataframe = pd.DataFrame(salary_data)
-                excel_file_name = f"{currentmonth}_{company}_NetSalaries.xlsx"
-                file_path = path.join(target_folder, excel_file_name)
-                # Check if the file exists
-                if path.exists(file_path):
-                    # Load existing data
-                    existing_data = pd.read_excel(file_path)
-                    
-                    # Concatenate the existing data with the new data
-                    updated_data = pd.concat([existing_data, salary_dataframe], ignore_index=True)
-                else:
-                    # If the file doesn't exist, use the new data as the updated data
-                    updated_data = salary_dataframe
-
-                # Write the updated data back to the file
-                updated_data.to_excel(file_path, index=False)
-            if "meldung" in selected_pdf.lower():
-                suffix = "Meldungen"
-                extracted_lines,employee_list = extract_left_right_text(selected_pdf,suffix,target_folder,company)
-                print("employee_list")
-                print(employee_list)
-                for employee in employee_list:
-                    target_word = "Bruttoarbeitsentgelt"
-                    find_name_amount_for_meldung(employee,extracted_lines_for_amount,target_word,company,salary_data,currentmonth)
-            if "lohnsteuer" in selected_pdf.lower():
-                    suffix = "Lohnsteuerbescheinigung"
+if base_folder is not None:
+    for company, folder_path in company_info.items():
+        pdf_files = find_lohn_pdfs(folder_path)
+        if pdf_files:
+            target_folder = folder_path
+            for selected_pdf in pdf_files:
+                salary_data = []
+                print(selected_pdf)
+                # Extract text from the PDF once
+                if "lohnab" in selected_pdf.lower() or "meldung" in selected_pdf.lower():
+                    with pdfplumber.open(selected_pdf) as pdf:
+                        extracted_lines_for_amount = []
+                        for page_number, page in enumerate(pdf.pages, start=1):  # Start page numbering at 1
+                            text = page.extract_text()
+                            if text:
+                                lines = text.split('\n')
+                                extracted_lines_for_amount.append(f"Page-{page_number}")
+                                for line in lines:
+                                    extracted_lines_for_amount.append(line)  # Then append the line text
+                start_time = time.time()
+                if "lohnab" in selected_pdf.lower():
+                    suffix = "Lohnabrechnung"
                     extracted_lines,employee_list = extract_left_right_text(selected_pdf,suffix,target_folder,company)
-                #for employee in listOfEmployees:
-                    """target_word = "Bruttoarbeitsentgelt"
-                    find_name_amount_for_lohnsteuer(target_word,company,salary_data,currentmonth,extracted_lines,target_folder,suffix,input_pdf)"""
-            end_time = time.time()
-            print(f"Time taken for processing the employees: {end_time - start_time:.4f} seconds")  # Print the time taken
-                #extract_text_from_pdf(selected_pdf, employee,company,salary_data,currentmonth)
-            print("salary_data")
-            print(salary_data)
-            print(len(salary_data))
-    else:
-        print(f"No PDF files found for {company}.")
+                    for employee in employee_list:
+                        target_word = 'Auszahlungsbetrag'  # Replace with the word you're looking for
+                        find_name_amount_for_lohn(employee,extracted_lines_for_amount,target_word,company,salary_data,currentmonth)
+                    salary_dataframe = pd.DataFrame(salary_data)
+                    excel_file_name = f"{currentmonth}_{company}_NetSalaries.xlsx"
+                    file_path = os.path.join(target_folder, excel_file_name)
+                    # Check if the file exists
+                    if os.path.exists(file_path):
+                        # Load existing data
+                        existing_data = pd.read_excel(file_path)
+                        
+                        # Concatenate the existing data with the new data
+                        updated_data = pd.concat([existing_data, salary_dataframe], ignore_index=True)
+                    else:
+                        # If the file doesn't exist, use the new data as the updated data
+                        updated_data = salary_dataframe
 
+                    # Write the updated data back to the file
+                    updated_data.to_excel(file_path, index=False)
+                if "meldung" in selected_pdf.lower():
+                    suffix = "Meldungen"
+                    extracted_lines,employee_list = extract_left_right_text(selected_pdf,suffix,target_folder,company)
+                    print("employee_list")
+                    print(employee_list)
+                    for employee in employee_list:
+                        target_word = "Bruttoarbeitsentgelt"
+                        find_name_amount_for_meldung(employee,extracted_lines_for_amount,target_word,company,salary_data,currentmonth)
+                if "lohnsteuer" in selected_pdf.lower():
+                        suffix = "Lohnsteuerbescheinigung"
+                        extracted_lines,employee_list = extract_left_right_text(selected_pdf,suffix,target_folder,company)
+                    #for employee in listOfEmployees:
+                        """target_word = "Bruttoarbeitsentgelt"
+                        find_name_amount_for_lohnsteuer(target_word,company,salary_data,currentmonth,extracted_lines,target_folder,suffix,input_pdf)"""
+                end_time = time.time()
+                print(f"Time taken for processing the employees: {end_time - start_time:.4f} seconds")  # Print the time taken
+                    #extract_text_from_pdf(selected_pdf, employee,company,salary_data,currentmonth)
+                print("salary_data")
+                print(salary_data)
+                print(len(salary_data))
+        else:
+            print(f"No PDF files found for {company}.")
+else:
+    print(f"Base folder not found")
